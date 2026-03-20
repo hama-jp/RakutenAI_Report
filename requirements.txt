@@ -9,6 +9,9 @@ huggingface-hub>=0.20.0
 transformers>=4.35.0
 safetensors>=0.4.0
 
+# Visualization
+matplotlib>=3.7.0
+
 # Optional but recommended
 tokenizers>=0.15.0
 sentencepiece>=0.1.99

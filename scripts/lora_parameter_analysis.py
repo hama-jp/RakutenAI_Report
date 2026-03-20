@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-LoRA Analysis Script - Deep investigation of LoRA modifications
+MLA Projection Analysis Script - Investigation of MLA low-rank projection
+layer differences between DeepSeek-V3 and RakutenAI-3.0
 """
 
 import torch
@@ -9,82 +10,82 @@ from huggingface_hub import hf_hub_download
 import json
 import re
 
-def analyze_lora_modifications():
-    """Analyze LoRA modifications between models"""
-    
+def analyze_mla_projections():
+    """Analyze MLA low-rank projection differences between models"""
+
     print("="*80)
-    print("LORA MODIFICATION ANALYSIS")
+    print("MLA LOW-RANK PROJECTION ANALYSIS")
     print("="*80)
-    
+
     # Load configs
-    config_a = hf_hub_download('deepseek-ai/DeepSeek-V3', 'config.json', cache_dir='/mnt/d/huggingface_cache')
-    config_b = hf_hub_download('Rakuten/RakutenAI-3.0', 'config.json', cache_dir='/mnt/d/huggingface_cache')
-    
+    config_a = hf_hub_download('deepseek-ai/DeepSeek-V3', 'config.json')
+    config_b = hf_hub_download('Rakuten/RakutenAI-3.0', 'config.json')
+
     with open(config_a) as f:
         cfg_a = json.load(f)
     with open(config_b) as f:
         cfg_b = json.load(f)
-    
-    print("\n1. LoRA Configuration Analysis:")
+
+    print("\n1. MLA Configuration (from config.json):")
     print("-" * 40)
-    print(f"Q LoRA Rank: {cfg_b.get('q_lora_rank', 'Not found')}")
-    print(f"KV LoRA Rank: {cfg_b.get('kv_lora_rank', 'Not found')}")
+    print(f"q_lora_rank (Q low-rank dim):  {cfg_b.get('q_lora_rank', 'Not found')}")
+    print(f"kv_lora_rank (KV low-rank dim): {cfg_b.get('kv_lora_rank', 'Not found')}")
+    print(f"Note: 'lora' in config naming is DeepSeek's convention for MLA")
+    print(f"      low-rank projections, not the LoRA fine-tuning technique.")
     print(f"Aux Loss Alpha: {cfg_b.get('aux_loss_alpha', 'Not found')}")
     
-    # Calculate theoretical LoRA parameters
+    # Calculate theoretical LoRA-related parameters based on MLA architecture
     hidden_size = cfg_b.get('hidden_size', 7168)
     num_layers = cfg_b.get('num_hidden_layers', 61)
-    q_rank = cfg_b.get('q_lora_rank', 1536)
-    kv_rank = cfg_b.get('kv_lora_rank', 512)
-    
-    print(f"\n2. LoRA Parameter Estimation:")
+    q_lora_rank = cfg_b.get('q_lora_rank', 1536)
+    kv_lora_rank = cfg_b.get('kv_lora_rank', 512)
+    num_attention_heads = cfg_b.get('num_attention_heads', 128)
+    qk_nope_head_dim = cfg_b.get('qk_nope_head_dim', 128)
+    qk_rope_head_dim = cfg_b.get('qk_rope_head_dim', 64)
+    v_head_dim = cfg_b.get('v_head_dim', 128)
+    num_key_value_heads = cfg_b.get('num_key_value_heads', 128)
+
+    # Q projection dimensions (MLA: q_a_proj compresses, q_b_proj expands)
+    # q_a_proj: [q_lora_rank, hidden_size]
+    # q_b_proj: [num_heads * (qk_nope_head_dim + qk_rope_head_dim), q_lora_rank]
+    q_a_params = q_lora_rank * hidden_size
+    q_b_out_dim = num_attention_heads * (qk_nope_head_dim + qk_rope_head_dim)
+    q_b_params = q_b_out_dim * q_lora_rank
+
+    # KV projection dimensions (MLA: kv_a_proj compresses, kv_b_proj expands)
+    # kv_a_proj_with_mqa: [kv_lora_rank + qk_rope_head_dim, hidden_size]
+    # kv_b_proj: [num_kv_heads * (qk_nope_head_dim + v_head_dim), kv_lora_rank]
+    kv_a_params = (kv_lora_rank + qk_rope_head_dim) * hidden_size
+    kv_b_out_dim = num_key_value_heads * (qk_nope_head_dim + v_head_dim)
+    kv_b_params = kv_b_out_dim * kv_lora_rank
+
+    print(f"\n2. MLA Low-Rank Projection Parameter Estimation:")
     print("-" * 40)
-    
-    # For attention layers (Q, K, V projections)
-    if q_rank:
-        # Q projection LoRA: A matrix (hidden_size, rank) + B matrix (rank, hidden_size)
-        q_params_per_layer = (hidden_size * q_rank) + (q_rank * hidden_size)
-        total_q_params = q_params_per_layer * num_layers
-        print(f"Q LoRA params per layer: {q_params_per_layer:,}")
-        print(f"Total Q LoRA params: {total_q_params:,}")
-    
-    if kv_rank:
-        # K, V projections LoRA
-        kv_params_per_layer = 2 * ((hidden_size * kv_rank) + (kv_rank * hidden_size))
-        total_kv_params = kv_params_per_layer * num_layers
-        print(f"KV LoRA params per layer: {kv_params_per_layer:,}")
-        print(f"Total KV LoRA params: {total_kv_params:,}")
-    
-    total_lora_params = (total_q_params if q_rank else 0) + (total_kv_params if kv_rank else 0)
-    print(f"Total estimated LoRA params: {total_lora_params:,}")
-    
-    # Estimate base model size (rough calculation)
-    attention_params = num_layers * 4 * hidden_size * hidden_size  # Q, K, V, O projections
-    mlp_params = num_layers * 3 * hidden_size * (hidden_size * 4)  # Up, Down, Gate projections
-    embedding_params = cfg_b.get('vocab_size', 129280) * hidden_size
-    
-    base_params = attention_params + mlp_params + embedding_params
-    lora_percentage = (total_lora_params / base_params) * 100
-    
-    print(f"Estimated base model params: {base_params:,}")
-    print(f"LoRA overhead: {lora_percentage:.2f}%")
+    print(f"Q low-rank projections per layer: q_a={q_a_params:,} + q_b={q_b_params:,} = {q_a_params + q_b_params:,}")
+    print(f"KV low-rank projections per layer: kv_a={kv_a_params:,} + kv_b={kv_b_params:,} = {kv_a_params + kv_b_params:,}")
+
+    per_layer_total = q_a_params + q_b_params + kv_a_params + kv_b_params
+    total_low_rank_params = per_layer_total * num_layers
+    print(f"Per-layer total: {per_layer_total:,}")
+    print(f"Total low-rank projection params ({num_layers} layers): {total_low_rank_params:,}")
+
+    print(f"\nNote: These low-rank projections are part of DeepSeek-V3's MLA")
+    print(f"(Multi-Head Latent Attention) architecture, not externally added LoRA adapters.")
     
     print(f"\n3. Weight Similarity Explanation:")
     print("-" * 40)
-    print("✅ 90%+ similarity makes sense now!")
-    print("• Base DeepSeek-V3 weights are preserved")
-    print("• LoRA adds small rank-decomposed modifications")
-    print("• Only Q/K/V attention layers have LoRA adapters") 
-    print("• MLP and other layers remain identical")
-    print("• This is classic LoRA fine-tuning approach")
-    
-    print(f"\n4. Technical Implementation:")
+    print("• High similarity (>99%) across most tensors")
+    print("• MLA low-rank projection layers (q_a/q_b/kv_a/kv_b) show differences")
+    print("• MLP and normalization layers remain virtually identical")
+    print("• Pattern consistent with fine-tuning of attention components")
+
+    print(f"\n4. Technical Notes:")
     print("-" * 40)
-    print("RakutenAI-3.0 = DeepSeek-V3 + LoRA Adapters")
-    print("• Original weights W preserved")
-    print("• LoRA adds ΔW = B × A (low-rank decomposition)")
-    print("• Final output: W × x + B × A × x")
-    print("• Allows efficient fine-tuning with minimal parameters")
+    print("• q_a_proj/q_b_proj and kv_a_proj/kv_b_proj are part of DeepSeek-V3's")
+    print("  MLA (Multi-Head Latent Attention) architecture, not external LoRA adapters")
+    print("• Both DeepSeek-V3 and RakutenAI-3.0 share these parameter names")
+    print("• The observed weight differences in these layers suggest fine-tuning")
+    print("  was applied to the MLA projection weights specifically")
 
 if __name__ == "__main__":
-    analyze_lora_modifications()
+    analyze_mla_projections()

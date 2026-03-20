@@ -8,9 +8,10 @@ This repository contains a comprehensive technical investigation comparing Rakut
 
 - **99.94% average cosine similarity** between model weights
 - **85.82% of tensors** show extremely high similarity (>0.999)
-- **LoRA implementation confirmed**: Q/KV projection modifications detected
+- **MLA projection layers fine-tuned**: Weight differences concentrated in DeepSeek-V3's existing MLA low-rank projection layers (q_a/q_b/kv_a/kv_b)
 - **Identical tokenizer**: SHA256 hash verification confirms same source
 - **Architecture match**: Complete parameter alignment verified
+- **MIT license not displayed**: Rakuten published RakutenAI-3.0 as an independent model with Apache-2.0 only, without crediting DeepSeek-V3 or displaying the MIT license
 
 ## 📁 Repository Structure
 
@@ -22,7 +23,7 @@ RakutenAI_Report/
 │   └── verification_guide.md   # Step-by-step verification guide
 ├── scripts/                     # Analysis scripts
 │   ├── comprehensive_model_analysis.py  # Main analysis tool
-│   └── lora_parameter_analysis.py      # LoRA-specific analysis
+│   └── lora_parameter_analysis.py      # MLA projection layer analysis
 ├── data/                        # Analysis results
 │   └── comprehensive_analysis_results.csv  # Detailed tensor comparison data
 ├── images/                      # Visualizations
@@ -54,16 +55,18 @@ print(f"RakutenAI:   {hash_b}")
 print(f"Match: {hash_a == hash_b}")  # Returns: True
 ```
 
-### LoRA Parameter Detection
+### MLA Low-Rank Projection Detection
 ```python
-# Check for LoRA parameters
+# Check for MLA low-rank projection parameters
 from safetensors.torch import load_file
 
 file = hf_hub_download('Rakuten/RakutenAI-3.0', 'model-00001-of-000163.safetensors')
 weights = load_file(file, device='cpu')
 
-lora_keys = [k for k in weights.keys() if '_a_proj' in k or '_b_proj' in k]
-print(f"Found {len(lora_keys)} LoRA parameters")
+# These are MLA (Multi-Head Latent Attention) architecture parameters,
+# not externally added LoRA adapters
+mla_keys = [k for k in weights.keys() if '_a_proj' in k or '_b_proj' in k]
+print(f"Found {len(mla_keys)} MLA low-rank projection parameters")
 ```
 
 ### Full Analysis
@@ -88,24 +91,28 @@ python scripts/comprehensive_model_analysis.py \
 |-----------|-------------------|-------|
 | MLP layers | 99.9%+ | Virtually identical |
 | LayerNorm | 100% | Perfect match |
-| Attention (non-LoRA) | 99.8%+ | Minimal differences |
-| Attention (LoRA) | 97-98% | LoRA modifications detected |
+| Attention (non-MLA) | 99.8%+ | Minimal differences |
+| Attention (MLA projections) | 97-98% | Fine-tuning differences detected |
 
 ## 🔬 Technical Details
 
-### LoRA Configuration Detected
+### MLA Low-Rank Projections
 ```
-Q (Query) LoRA:
-- A matrix: [1536, 7168] 
-- B matrix: [24576, 1536]
+Q (Query) Projection (MLA architecture):
+- q_a_proj: [1536, 7168]
+- q_b_proj: [24576, 1536]
 - Rank: 1536
 
-KV (Key/Value) LoRA:  
-- A matrix: [576, 7168]
-- B matrix: [32768, 512] 
+KV (Key/Value) Projection (MLA architecture):
+- kv_a_proj_with_mqa: [576, 7168]
+- kv_b_proj: [32768, 512]
 - Rank: 512
 
-Strategic 3:1 rank allocation (Q:KV = 1536:512)
+These are part of DeepSeek-V3's MLA (Multi-Head Latent Attention)
+architecture — they exist in both models. They are NOT externally added
+LoRA adapters (despite "lora" appearing in DeepSeek's config naming).
+Weight differences in these layers confirm they were targeted during
+Rakuten's fine-tuning, while MLP/LayerNorm layers remain identical.
 ```
 
 ### Architecture Verification
@@ -122,9 +129,9 @@ The complete technical investigation report (in Japanese) is available in [`docs
 Key sections include:
 1. Investigation methodology
 2. Quantitative findings
-3. LoRA technical analysis
+3. MLA architecture and fine-tuning analysis
 4. Public funding implications (GENIAC project)
-5. License compliance assessment
+5. License compliance assessment (MIT license violation)
 6. Technical evaluation
 
 ## 🛠️ Reproducibility
@@ -157,4 +164,4 @@ If you use this analysis in your research, please cite:
 
 ---
 
-**Note**: This investigation focuses on technical analysis and transparency in AI model development. All findings are presented objectively for the benefit of the AI research community.
+**Note**: This investigation demonstrates that RakutenAI-3.0 is a fine-tuned derivative of DeepSeek-V3, with modifications focused on the MLA low-rank projection layers. Rakuten published it as an independent model without displaying the required MIT license or crediting DeepSeek-V3, despite the model weights being 99.94% identical. All findings are reproducible using the provided scripts and data.
