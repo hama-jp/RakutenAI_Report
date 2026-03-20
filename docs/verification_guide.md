@@ -36,98 +36,100 @@ RakutenAI-3.0: 621ac2e32d0dba658404412318818aaa8ce8cda492e59830109d8da6b517fb41
 
 ---
 
-## 5.2 LoRAパラメータの発見
+## 5.2 MLA低ランクプロジェクションパラメータの確認
+
+> **注記**: 以下のパラメータ（`q_a_proj`, `q_b_proj`, `kv_a_proj_with_mqa`, `kv_b_proj`）はDeepSeek-V3のMLA（Multi-Head Latent Attention）アーキテクチャ固有の構成要素です。外部LoRAアダプターではありません。対照実験として、DeepSeek-V3本体にも同じパラメータ名が存在することを確認できます。
 
 **検証コード**：
 ```python
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
 
-def discover_lora_parameters():
+def discover_mla_parameters():
     print("📦 重みファイルをダウンロード中...")
     file = hf_hub_download('Rakuten/RakutenAI-3.0', 'model-00001-of-000163.safetensors')
     weights = load_file(file, device='cpu')
-    
-    print("🔍 LoRAパラメータを検索中...")
-    lora_keys = []
+
+    print("🔍 MLA低ランクプロジェクションパラメータを検索中...")
+    mla_keys = []
     for key in weights.keys():
         if any(pattern in key.lower() for pattern in ['_a_proj', '_b_proj']):
-            lora_keys.append((key, weights[key].shape))
-    
-    print(f"発見されたLoRAパラメータ: {len(lora_keys)}個")
-    print("\n📊 詳細:")
-    for key, shape in lora_keys[:8]:  # 最初の8個を表示
-        lora_type = "🔸 Q-LoRA" if "q_" in key else "🔹 KV-LoRA"
-        matrix_type = "A行列" if "_a_proj" in key else "B行列"
-        print(f"  {lora_type} {key.split('.')[-2]}.{key.split('.')[-1]}: {shape} ({matrix_type})")
+            mla_keys.append((key, weights[key].shape))
 
-discover_lora_parameters()
+    print(f"発見されたMLAプロジェクションパラメータ: {len(mla_keys)}個")
+    print("\n📊 詳細:")
+    for key, shape in mla_keys[:8]:
+        proj_type = "🔸 Q" if "q_" in key else "🔹 KV"
+        matrix_type = "A行列（圧縮）" if "_a_proj" in key else "B行列（展開）"
+        print(f"  {proj_type} {key.split('.')[-2]}.{key.split('.')[-1]}: {shape} ({matrix_type})")
+
+discover_mla_parameters()
 ```
 
 **実際の実行結果**：
 ```
 📦 重みファイルをダウンロード中...
-🔍 LoRAパラメータを検索中...
-発見されたLoRAパラメータ: 32個
+🔍 MLA低ランクプロジェクションパラメータを検索中...
+発見されたMLAプロジェクションパラメータ: 32個
 
 📊 詳細:
-  🔸 Q-LoRA q_a_proj.weight: torch.Size([1536, 7168]) (A行列)
-  🔸 Q-LoRA q_b_proj.weight: torch.Size([24576, 1536]) (B行列)
-  🔹 KV-LoRA kv_a_proj_with_mqa.weight: torch.Size([576, 7168]) (A行列)
-  🔹 KV-LoRA kv_b_proj.weight: torch.Size([32768, 512]) (B行列)
-  🔸 Q-LoRA q_a_proj.weight: torch.Size([1536, 7168]) (A行列)
-  🔸 Q-LoRA q_b_proj.weight: torch.Size([24576, 1536]) (B行列)
-  🔹 KV-LoRA kv_a_proj_with_mqa.weight: torch.Size([576, 7168]) (A行列)
-  🔹 KV-LoRA kv_b_proj.weight: torch.Size([32768, 512]) (B行列)
+  🔸 Q q_a_proj.weight: torch.Size([1536, 7168]) (A行列（圧縮）)
+  🔸 Q q_b_proj.weight: torch.Size([24576, 1536]) (B行列（展開）)
+  🔹 KV kv_a_proj_with_mqa.weight: torch.Size([576, 7168]) (A行列（圧縮）)
+  🔹 KV kv_b_proj.weight: torch.Size([32768, 512]) (B行列（展開）)
+  🔸 Q q_a_proj.weight: torch.Size([1536, 7168]) (A行列（圧縮）)
+  🔸 Q q_b_proj.weight: torch.Size([24576, 1536]) (B行列（展開）)
+  🔹 KV kv_a_proj_with_mqa.weight: torch.Size([576, 7168]) (A行列（圧縮）)
+  🔹 KV kv_b_proj.weight: torch.Size([32768, 512]) (B行列（展開）)
 ```
 
-> 💡 **驚くべき発見**：RakutenAI-3.0には、層ごとに独立したLoRAパラメータが組み込まれていました。これは**明確なLoRA実装の証拠**です。
+> 💡 **補足**: これらのパラメータはDeepSeek-V3のMLAアーキテクチャに由来するものです。DeepSeek-V3本体にも同一のパラメータ名・形状が存在しますが、RakutenAI-3.0との間で重み値に差異が観測されており、ファインチューニングの対象となった可能性があります。
 
 ---
 
-## 5.3 LoRA効果の定量分析
+## 5.3 MLA低ランクプロジェクションの分析
 
-**LoRA効果計算コード**：
+**MLA射影行列の分析コード**：
 ```python
 import torch
 
-def analyze_lora_impact():
-    print("⚗️  LoRA効果を計算中...")
+def analyze_mla_projection():
+    print("⚗️  MLA低ランクプロジェクションを分析中...")
     file = hf_hub_download('Rakuten/RakutenAI-3.0', 'model-00001-of-000163.safetensors')
     weights = load_file(file, device='cpu')
-    
-    # 第0層のQ LoRAを分析
+
+    # 第0層のQ MLA射影を分析
     layer = 0
     q_a = weights[f'model.layers.{layer}.self_attn.q_a_proj.weight']
     q_b = weights[f'model.layers.{layer}.self_attn.q_b_proj.weight']
-    
-    print(f"第{layer}層 Q-LoRA分析:")
-    print(f"  A行列: {q_a.shape} (rank={q_a.shape[0]})")
-    print(f"  B行列: {q_b.shape}")
-    
-    # LoRA効果 ΔW = B @ A を計算
-    delta_w = torch.mm(q_b.float(), q_a.float())
-    lora_magnitude = torch.norm(delta_w).item()
-    
-    print(f"  LoRA効果 ΔW: {delta_w.shape}")
-    print(f"  効果の強さ (Frobenius norm): {lora_magnitude:,.0f}")
-    print(f"  ランク効率: {q_a.shape[0]}/{max(delta_w.shape)} = {q_a.shape[0]/max(delta_w.shape)*100:.1f}%")
 
-analyze_lora_impact()
+    print(f"第{layer}層 Q MLA射影分析:")
+    print(f"  q_a_proj (圧縮行列): {q_a.shape} (rank={q_a.shape[0]})")
+    print(f"  q_b_proj (展開行列): {q_b.shape}")
+
+    # 結合射影 W = B @ A を計算
+    combined_w = torch.mm(q_b.float(), q_a.float())
+    magnitude = torch.norm(combined_w).item()
+
+    print(f"  結合射影 W: {combined_w.shape}")
+    print(f"  ノルム (Frobenius norm): {magnitude:,.0f}")
+    print(f"  圧縮率: {q_a.shape[0]}/{max(combined_w.shape)} = {q_a.shape[0]/max(combined_w.shape)*100:.1f}%")
+
+analyze_mla_projection()
 ```
 
 **実際の実行結果**：
 ```
-⚗️  LoRA効果を計算中...
-第0層 Q-LoRA分析:
-  A行列: torch.Size([1536, 7168]) (rank=1536)
-  B行列: torch.Size([24576, 1536])
-  LoRA効果 ΔW: torch.Size([24576, 7168])
-  効果の強さ (Frobenius norm): 6,430,794,240
-  ランク効率: 1536/24576 = 6.2%
+⚗️  MLA低ランクプロジェクションを分析中...
+第0層 Q MLA射影分析:
+  q_a_proj (圧縮行列): torch.Size([1536, 7168]) (rank=1536)
+  q_b_proj (展開行列): torch.Size([24576, 1536])
+  結合射影 W: torch.Size([24576, 7168])
+  ノルム (Frobenius norm): 6,430,794,240
+  圧縮率: 1536/24576 = 6.2%
 ```
 
-> 🔬 **技術的解釈**：LoRAは元の重み行列（24576×7168）を、わずか6.2%のランクで効果的に修正しています。これがLoRA技術の革新性です。
+> 🔬 **技術的解釈**: MLAでは元の射影行列（24576×7168）をランク1536の低ランク分解で表現しています。これはKVキャッシュ削減のためのアーキテクチャ設計であり、ファインチューニング手法としてのLoRAとは目的が異なります。
 
 ---
 

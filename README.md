@@ -8,7 +8,7 @@ This repository contains a comprehensive technical investigation comparing Rakut
 
 - **99.94% average cosine similarity** between model weights
 - **85.82% of tensors** show extremely high similarity (>0.999)
-- **LoRA implementation confirmed**: Q/KV projection modifications detected
+- **Attention fine-tuning detected**: Q/KV projection weight differences found
 - **Identical tokenizer**: SHA256 hash verification confirms same source
 - **Architecture match**: Complete parameter alignment verified
 
@@ -54,16 +54,18 @@ print(f"RakutenAI:   {hash_b}")
 print(f"Match: {hash_a == hash_b}")  # Returns: True
 ```
 
-### LoRA Parameter Detection
+### MLA Low-Rank Projection Detection
 ```python
-# Check for LoRA parameters
+# Check for MLA low-rank projection parameters
 from safetensors.torch import load_file
 
 file = hf_hub_download('Rakuten/RakutenAI-3.0', 'model-00001-of-000163.safetensors')
 weights = load_file(file, device='cpu')
 
-lora_keys = [k for k in weights.keys() if '_a_proj' in k or '_b_proj' in k]
-print(f"Found {len(lora_keys)} LoRA parameters")
+# These are MLA (Multi-Head Latent Attention) architecture parameters,
+# not externally added LoRA adapters
+mla_keys = [k for k in weights.keys() if '_a_proj' in k or '_b_proj' in k]
+print(f"Found {len(mla_keys)} MLA low-rank projection parameters")
 ```
 
 ### Full Analysis
@@ -88,24 +90,26 @@ python scripts/comprehensive_model_analysis.py \
 |-----------|-------------------|-------|
 | MLP layers | 99.9%+ | Virtually identical |
 | LayerNorm | 100% | Perfect match |
-| Attention (non-LoRA) | 99.8%+ | Minimal differences |
-| Attention (LoRA) | 97-98% | LoRA modifications detected |
+| Attention (non-MLA) | 99.8%+ | Minimal differences |
+| Attention (MLA projections) | 97-98% | Fine-tuning differences detected |
 
 ## 🔬 Technical Details
 
-### LoRA Configuration Detected
+### MLA Low-Rank Projections
 ```
-Q (Query) LoRA:
-- A matrix: [1536, 7168] 
-- B matrix: [24576, 1536]
+Q (Query) Projection (MLA architecture):
+- q_a_proj: [1536, 7168]
+- q_b_proj: [24576, 1536]
 - Rank: 1536
 
-KV (Key/Value) LoRA:  
-- A matrix: [576, 7168]
-- B matrix: [32768, 512] 
+KV (Key/Value) Projection (MLA architecture):
+- kv_a_proj_with_mqa: [576, 7168]
+- kv_b_proj: [32768, 512]
 - Rank: 512
 
-Strategic 3:1 rank allocation (Q:KV = 1536:512)
+Note: These are part of DeepSeek-V3's MLA (Multi-Head Latent Attention)
+architecture, not externally added LoRA adapters. Weight differences in
+these layers suggest they were targeted during fine-tuning.
 ```
 
 ### Architecture Verification

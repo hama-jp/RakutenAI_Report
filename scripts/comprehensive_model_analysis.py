@@ -18,32 +18,29 @@ from tqdm import tqdm
 import logging
 import concurrent.futures
 import threading
-from queue import Queue
-import time
+import argparse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class GPUAcceleratedAuditor:
-    def __init__(self):
-        self.model_a = 'deepseek-ai/DeepSeek-V3'
-        self.model_b = 'Rakuten/RakutenAI-3.0'
-        self.cache_dir = '/mnt/d/huggingface_cache'
+    def __init__(self, model_a='deepseek-ai/DeepSeek-V3', model_b='Rakuten/RakutenAI-3.0',
+                 cache_dir=None, output_dir=None):
+        self.model_a = model_a
+        self.model_b = model_b
+        self.cache_dir = cache_dir
+        self.output_dir = output_dir or '.'
         self.all_layer_data = {}
-        
+
         # GPU setup
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
-        
+
         if torch.cuda.is_available():
             print(f"GPU: {torch.cuda.get_device_name()}")
             print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-            # Set high memory usage
-            torch.cuda.set_per_process_memory_fraction(0.9)  # Use 90% of GPU memory
-        
+
         # Threading setup
-        self.download_queue = Queue()
-        self.analysis_queue = Queue()
         self.results_lock = threading.Lock()
     
     def download_file_pair(self, file_idx):
@@ -174,11 +171,7 @@ class GPUAcceleratedAuditor:
                     self.all_layer_data[layer_num]['tensor_types'][result['tensor_type']].append(result['similarity'])
             
             print(f"[Analysis {file_idx}] Complete - {len(batch_results)} tensors processed")
-            
-            # Clean up files
-            Path(file_a).unlink(missing_ok=True)
-            Path(file_b).unlink(missing_ok=True)
-            
+
             # Clear GPU cache
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -200,33 +193,24 @@ class GPUAcceleratedAuditor:
             return 'other'
     
     def parallel_audit(self, num_files=20):
-        """Run audit with maximum parallelization"""
+        """Run audit with parallel downloads and sequential GPU analysis"""
         print('='*80)
-        print('GPU-ACCELERATED MODEL AUDIT - MAXIMUM PERFORMANCE')
+        print('MODEL AUDIT')
         print('='*80)
         print(f'Model A: {self.model_a}')
         print(f'Model B: {self.model_b}')
         print(f'Files to analyze: {num_files}')
         print(f'Device: {self.device}')
         print('='*80)
-        
+
         file_indices = list(range(1, num_files + 1))
-        
-        # Process files with threading for maximum throughput
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-            futures = []
-            
-            for file_idx in file_indices:
-                future = executor.submit(self.process_single_file, file_idx)
-                futures.append(future)
-            
-            # Wait for completion with progress
-            for i, future in enumerate(concurrent.futures.as_completed(futures)):
-                try:
-                    future.result()
-                    print(f"Progress: {i+1}/{num_files} files complete")
-                except Exception as e:
-                    print(f"File processing error: {e}")
+
+        for i, file_idx in enumerate(file_indices):
+            try:
+                self.process_single_file(file_idx)
+                print(f"Progress: {i+1}/{num_files} files complete")
+            except Exception as e:
+                print(f"File {file_idx} processing error: {e}")
         
         return self.generate_comprehensive_report()
     
@@ -276,8 +260,10 @@ class GPUAcceleratedAuditor:
         df = pd.DataFrame(layer_summaries)
         
         # Save to CSV
-        df.to_csv('gpu_accelerated_audit_results.csv', index=False)
-        print(f'Saved detailed results to: gpu_accelerated_audit_results.csv')
+        import os
+        output_path = os.path.join(self.output_dir, 'comprehensive_analysis_results.csv')
+        df.to_csv(output_path, index=False)
+        print(f'Saved detailed results to: {output_path}')
         
         # Print summary
         if len(df) > 0:
@@ -294,11 +280,31 @@ class GPUAcceleratedAuditor:
         
         return df
 
-# Run the GPU-accelerated audit
+def parse_args():
+    parser = argparse.ArgumentParser(description='Model weight comparison audit tool')
+    parser.add_argument('--model-a', default='deepseek-ai/DeepSeek-V3',
+                        help='First model ID on HuggingFace (default: deepseek-ai/DeepSeek-V3)')
+    parser.add_argument('--model-b', default='Rakuten/RakutenAI-3.0',
+                        help='Second model ID on HuggingFace (default: Rakuten/RakutenAI-3.0)')
+    parser.add_argument('--num-files', type=int, default=20,
+                        help='Number of safetensor files to analyze (default: 20)')
+    parser.add_argument('--cache-dir', default=None,
+                        help='HuggingFace cache directory (default: HF default)')
+    parser.add_argument('--output-dir', default='.',
+                        help='Directory for output CSV (default: current directory)')
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    auditor = GPUAcceleratedAuditor()
-    results = auditor.parallel_audit(num_files=20)  # Process 20 files for comprehensive coverage
-    
+    args = parse_args()
+    auditor = GPUAcceleratedAuditor(
+        model_a=args.model_a,
+        model_b=args.model_b,
+        cache_dir=args.cache_dir,
+        output_dir=args.output_dir,
+    )
+    results = auditor.parallel_audit(num_files=args.num_files)
+
     print('\n' + '='*80)
-    print('GPU-ACCELERATED AUDIT COMPLETE')
+    print('AUDIT COMPLETE')
     print('='*80)
