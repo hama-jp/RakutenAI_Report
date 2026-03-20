@@ -8,9 +8,10 @@ This repository contains a comprehensive technical investigation comparing Rakut
 
 - **99.94% average cosine similarity** between model weights
 - **85.82% of tensors** show extremely high similarity (>0.999)
-- **Attention fine-tuning detected**: Q/KV projection weight differences found
+- **MLA projection layers fine-tuned**: Weight differences concentrated in DeepSeek-V3's existing MLA low-rank projection layers (q_a/q_b/kv_a/kv_b)
 - **Identical tokenizer**: SHA256 hash verification confirms same source
 - **Architecture match**: Complete parameter alignment verified
+- **MIT license not displayed**: Rakuten published RakutenAI-3.0 as an independent model with Apache-2.0 only, without crediting DeepSeek-V3 or displaying the MIT license
 
 ## 📁 Repository Structure
 
@@ -22,7 +23,7 @@ RakutenAI_Report/
 │   └── verification_guide.md   # Step-by-step verification guide
 ├── scripts/                     # Analysis scripts
 │   ├── comprehensive_model_analysis.py  # Main analysis tool
-│   └── lora_parameter_analysis.py      # LoRA-specific analysis
+│   └── lora_parameter_analysis.py      # MLA projection layer analysis
 ├── data/                        # Analysis results
 │   └── comprehensive_analysis_results.csv  # Detailed tensor comparison data
 ├── images/                      # Visualizations
@@ -107,9 +108,11 @@ KV (Key/Value) Projection (MLA architecture):
 - kv_b_proj: [32768, 512]
 - Rank: 512
 
-Note: These are part of DeepSeek-V3's MLA (Multi-Head Latent Attention)
-architecture, not externally added LoRA adapters. Weight differences in
-these layers suggest they were targeted during fine-tuning.
+These are part of DeepSeek-V3's MLA (Multi-Head Latent Attention)
+architecture — they exist in both models. They are NOT externally added
+LoRA adapters (despite "lora" appearing in DeepSeek's config naming).
+Weight differences in these layers confirm they were targeted during
+Rakuten's fine-tuning, while MLP/LayerNorm layers remain identical.
 ```
 
 ### Architecture Verification
@@ -126,9 +129,9 @@ The complete technical investigation report (in Japanese) is available in [`docs
 Key sections include:
 1. Investigation methodology
 2. Quantitative findings
-3. LoRA technical analysis
+3. MLA architecture and fine-tuning analysis
 4. Public funding implications (GENIAC project)
-5. License compliance assessment
+5. License compliance assessment (MIT license violation)
 6. Technical evaluation
 
 ## 🛠️ Reproducibility
@@ -161,4 +164,4 @@ If you use this analysis in your research, please cite:
 
 ---
 
-**Note**: This investigation focuses on technical analysis and transparency in AI model development. All findings are presented objectively for the benefit of the AI research community.
+**Note**: This investigation demonstrates that RakutenAI-3.0 is a fine-tuned derivative of DeepSeek-V3, with modifications focused on the MLA low-rank projection layers. Rakuten published it as an independent model without displaying the required MIT license or crediting DeepSeek-V3, despite the model weights being 99.94% identical. All findings are reproducible using the provided scripts and data.

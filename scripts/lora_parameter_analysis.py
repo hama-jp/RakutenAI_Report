@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-LoRA Analysis Script - Deep investigation of LoRA modifications
+MLA Projection Analysis Script - Investigation of MLA low-rank projection
+layer differences between DeepSeek-V3 and RakutenAI-3.0
 """
 
 import torch
@@ -9,26 +10,28 @@ from huggingface_hub import hf_hub_download
 import json
 import re
 
-def analyze_lora_modifications():
-    """Analyze LoRA modifications between models"""
-    
+def analyze_mla_projections():
+    """Analyze MLA low-rank projection differences between models"""
+
     print("="*80)
-    print("LORA MODIFICATION ANALYSIS")
+    print("MLA LOW-RANK PROJECTION ANALYSIS")
     print("="*80)
-    
+
     # Load configs
     config_a = hf_hub_download('deepseek-ai/DeepSeek-V3', 'config.json')
     config_b = hf_hub_download('Rakuten/RakutenAI-3.0', 'config.json')
-    
+
     with open(config_a) as f:
         cfg_a = json.load(f)
     with open(config_b) as f:
         cfg_b = json.load(f)
-    
-    print("\n1. LoRA Configuration Analysis:")
+
+    print("\n1. MLA Configuration (from config.json):")
     print("-" * 40)
-    print(f"Q LoRA Rank: {cfg_b.get('q_lora_rank', 'Not found')}")
-    print(f"KV LoRA Rank: {cfg_b.get('kv_lora_rank', 'Not found')}")
+    print(f"q_lora_rank (Q low-rank dim):  {cfg_b.get('q_lora_rank', 'Not found')}")
+    print(f"kv_lora_rank (KV low-rank dim): {cfg_b.get('kv_lora_rank', 'Not found')}")
+    print(f"Note: 'lora' in config naming is DeepSeek's convention for MLA")
+    print(f"      low-rank projections, not the LoRA fine-tuning technique.")
     print(f"Aux Loss Alpha: {cfg_b.get('aux_loss_alpha', 'Not found')}")
     
     # Calculate theoretical LoRA-related parameters based on MLA architecture
@@ -85,4 +88,4 @@ def analyze_lora_modifications():
     print("  was applied to the MLA projection weights specifically")
 
 if __name__ == "__main__":
-    analyze_lora_modifications()
+    analyze_mla_projections()

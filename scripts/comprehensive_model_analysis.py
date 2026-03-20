@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-GPU-Accelerated Model Audit Script
-Maximum performance version using GPU acceleration and parallel processing
+Model Weight Comparison Audit Script
+Compares tensor-level similarity between two HuggingFace models
+with optional GPU acceleration.
 """
 
 import torch
